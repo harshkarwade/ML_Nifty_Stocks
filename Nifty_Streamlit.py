@@ -6,189 +6,186 @@ from plotly.subplots import make_subplots
 from sklearn.preprocessing import LabelEncoder
 from datetime import datetime
 
-# --- Functions from the Jupyter Notebook ---
+# --- Technical Indicator Functions from the Notebook ---
 
-# Replicating the RSI function for completeness, though it's mainly for feature creation
 def calculate_rsi(data, window=50):
     """Calculates the Relative Strength Index (RSI)."""
+    # 1. Calculate price changes
     delta = data.diff(1)
+    # 2. Separate gains and losses
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
-    # Using ewm with com=window-1 for standard RSI calculation
+    # 3. Calculate the smoothed average of gains and losses (using span=window for typical EWM)
     avg_gain = gain.ewm(com=window - 1, adjust=False).mean()
     avg_loss = loss.ewm(com=window - 1, adjust=False).mean()
+    # 4. Calculate Relative Strength (RS)
     rs = avg_gain / avg_loss
+    # 5. Calculate the RSI
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-# Placeholder function to simulate loading and preprocessing the data
+# --- Data Loading and Preprocessing ---
+
 @st.cache_data
 def load_and_preprocess_data():
     """
-    Simulates loading and preprocessing the data based on the notebook.
-    In a real scenario, you would replace this with:
-    df = pd.read_csv("Nifty_Stocks.csv")
+    Loads the raw data and recreates the necessary preprocessing steps 
+    (Date conversion, SMA, RSI calculation, and filling NaNs) 
+    from the original ML_Project.ipynb notebook.
     """
-    # Create an empty DataFrame with the expected columns and types
-    # Since the full data isn't available, we'll create dummy structured data
-    st.info("Simulating data loading and preprocessing. Please replace this with your actual `pd.read_csv` and preprocessing logic if running locally.")
-    
-    # Load the actual Nifty Stocks data if available, or simulate (as done below)
-    # We will assume a small subset for demonstration
-    data = {
-        'Date': ['2024-01-01', '2024-01-02', '2024-01-03', '2024-01-04', '2024-01-05',
-                 '2024-01-01', '2024-01-02', '2024-01-03', '2024-01-04', '2024-01-05'],
-        'Open': [3790.0, 3811.1, 3767.0, 3701.75, 3675.0, 100.0, 101.0, 98.0, 99.0, 102.0],
-        'High': [3832.0, 3811.1, 3771.85, 3719.0, 3747.75, 103.0, 103.0, 99.0, 101.0, 104.0],
-        'Low': [3773.0, 3767.25, 3687.05, 3651.0, 3674.85, 99.0, 97.0, 97.0, 98.0, 101.0],
-        'Close': [3811.1, 3783.2, 3691.75, 3666.8, 3737.9, 101.5, 97.5, 98.5, 100.5, 103.5],
-        'Volume': [825907, 1344068, 1803075, 3598144, 1963127, 500000, 550000, 600000, 650000, 700000],
-        'Symbol': ['TCS', 'TCS', 'TCS', 'TCS', 'TCS', 'INFY', 'INFY', 'INFY', 'INFY', 'INFY'],
-        'Category': ['IT_industry', 'IT_industry', 'IT_industry', 'IT_industry', 'IT_industry', 'IT_industry', 'IT_industry', 'IT_industry', 'IT_industry', 'IT_industry'],
-    }
-    # Create the DataFrame
-    df = pd.DataFrame(data)
+    try:
+        # Load the raw file from the path used in your notebook (Cell 3)
+        # NOTE: You MUST replace this with the correct path or ensure the file 
+        # is available in your Streamlit Cloud environment.
+        df = pd.read_csv("Nifty_Stocks.csv") 
+    except FileNotFoundError:
+        st.error("🚨 Error: 'Nifty_Stocks.csv' not found. Please ensure the file is in the correct directory or adjust the `pd.read_csv` path.")
+        st.stop()
 
-    # 1. Convert Date to datetime
+    # Data Cleaning and Feature Engineering (from Cells 7, 9, 12, 15, 16, 22, 23)
+    
+    # Fill NaN from original file (Cell 9)
+    df = df.fillna(0)
+    
+    # Convert Date to datetime (Cell 12)
     df['Date'] = pd.to_datetime(df['Date'])
-
-    # 2. Re-create SMA_50, SMA_200, and RSI for visualization purposes
-    df['SMA_50'] = df.groupby('Symbol')['Close'].transform(lambda x: x.rolling(window=50).mean().fillna(0))
-    df['SMA_200'] = df.groupby('Symbol')['Close'].transform(lambda x: x.rolling(window=200).mean().fillna(0))
-    # Note: RSI calculation in notebook uses 'window=50' which is unconventional but is replicated
-    df['RSI'] = df.groupby('Symbol')['Close'].transform(lambda x: calculate_rsi(x, window=50).fillna(0))
     
-    # 3. Drop rows that have any missing values introduced by rolling window (if using full data)
-    # With the dummy data, everything will have values after fillna(0)
-
-    # 4. For plotting the pattern, we only need a few columns.
+    # Calculate SMA_50 and SMA_200 (Cells 15 & 16) - done per symbol in practice
+    df['SMA_50'] = df.groupby('Symbol')['Close'].transform(lambda x: x.rolling(window=50).mean())
+    df['SMA_200'] = df.groupby('Symbol')['Close'].transform(lambda x: x.rolling(window=200).mean())
+    
+    # Calculate RSI (Cells 21 & 22) - done per symbol
+    df['RSI'] = df.groupby('Symbol')['Close'].transform(lambda x: calculate_rsi(x, window=50))
+    
+    # Fill NaNs created by rolling windows (Cells 19 & 23)
+    df['SMA_50'] = df['SMA_50'].fillna(0)
+    df['SMA_200'] = df['SMA_200'].fillna(0)
+    df['RSI'] = df['RSI'].fillna(0)
+    
+    # Drop columns that are only needed for regression training and not plotting
+    df = df.drop(columns=['Adj Close', 'Daily_Return', 'Price_Range', 'Volatility', 
+                          'Cumulative_Return', 'Average_Price', 
+                          'MACD12', 'MACD26', 'MACD9', 
+                          'RollingVolatility', 'Daily_volatility', 'Annual_volatility'], 
+                          errors='ignore')
     
     return df
 
 # --- Streamlit App Layout ---
 def main():
-    st.set_page_config(layout="wide")
-    st.title("Stock Price Pattern Visualizer and Regression Analysis")
+    st.set_page_config(layout="wide", page_title="Stock Price Pattern Visualizer")
+    st.title("📈 Stock Price Pattern Visualizer")
+    st.markdown("Select a stock and date range to analyze price patterns and indicators.")
+    st.markdown("---")
 
     # Load data
     df = load_and_preprocess_data()
     
     # --- Sidebar for User Input ---
-    st.sidebar.header("Filter Data")
+    st.sidebar.header("Filter & Analysis Options")
 
     # 1. Select Symbol
-    symbols = df['Symbol'].unique()
-    selected_symbol = st.sidebar.selectbox("Select Stock Symbol", symbols)
+    symbols = sorted(df['Symbol'].unique())
+    selected_symbol = st.sidebar.selectbox("Select Stock Symbol", symbols, index=0)
 
     # Filter data by selected symbol
-    df_symbol = df[df['Symbol'] == selected_symbol].sort_values(by='Date')
+    df_symbol = df[df['Symbol'] == selected_symbol].sort_values(by='Date').reset_index(drop=True)
 
     if df_symbol.empty:
-        st.error(f"No data available for symbol: {selected_symbol}")
+        st.error(f"No data available for symbol: **{selected_symbol}**")
         return
 
     # 2. Select Date Range
-    min_date = df_symbol['Date'].min().to_pydatetime()
-    max_date = df_symbol['Date'].max().to_pydatetime()
+    min_date = df_symbol['Date'].min().to_pydatetime().date()
+    max_date = df_symbol['Date'].max().to_pydatetime().date()
 
+    # Set default range to the last 90 trading days or the whole period if shorter
+    default_start_date = max_date - pd.DateOffset(days=120) 
+    default_start_date = max(default_start_date.date(), min_date) if default_start_date.date() < max_date else min_date
+    
     date_range = st.sidebar.date_input(
         "Select Date Range",
-        value=(min_date, max_date),
+        value=(default_start_date, max_date),
         min_value=min_date,
         max_value=max_date
     )
 
+    # Filter by date range
     if len(date_range) == 2:
         start_date, end_date = date_range
-        # Filter by date range
         df_filtered = df_symbol[(df_symbol['Date'] >= pd.to_datetime(start_date)) & 
                                 (df_symbol['Date'] <= pd.to_datetime(end_date))]
     else:
-        # If only one date is selected, show data up to that date (or handle as an error)
-        df_filtered = df_symbol
-        st.warning("Please select a start and end date.")
+        st.warning("Please select a valid start and end date for the visualization.")
+        df_filtered = pd.DataFrame() # Empty dataframe if date selection is incomplete
 
-    # --- Main Content ---
+    # --- Main Content: Visualization ---
     
-    st.header(f"Price Pattern for {selected_symbol}")
-    
-    # Check if filtered data is empty
-    if df_filtered.empty:
-        st.warning("No data found for the selected date range.")
-    else:
+    if not df_filtered.empty:
         # --- 1. Price and Moving Averages Plot (Pattern Visualisation) ---
+        st.subheader(f"Price Pattern and Technical Indicators for **{selected_symbol}**")
         
-        # Create figure with secondary y-axis for Volume
+        # Create figure with 2 rows for Price/SMA and RSI
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
                             vertical_spacing=0.05, 
                             row_heights=[0.7, 0.3], 
-                            specs=[[{"secondary_y": True}], [{"secondary_y": False}]])
+                            subplot_titles=[f"Close Price & Moving Averages", "Relative Strength Index (RSI)"])
 
         # Row 1: Price and SMAs
         fig.add_trace(go.Scatter(x=df_filtered['Date'], y=df_filtered['Close'], 
-                                mode='lines', name='Close Price', line=dict(color='blue')), 
+                                mode='lines', name='Close Price', line=dict(color='blue', width=2)), 
                       row=1, col=1)
         
-        fig.add_trace(go.Scatter(x=df_filtered['Date'], y=df_filtered['SMA_50'], 
-                                mode='lines', name='SMA 50', line=dict(color='orange', dash='dash')), 
-                      row=1, col=1)
+        # Only show SMAs if they have non-zero values (i.e., enough data points)
+        if (df_filtered['SMA_50'] != 0).any():
+            fig.add_trace(go.Scatter(x=df_filtered['Date'], y=df_filtered['SMA_50'], 
+                                    mode='lines', name='SMA 50', line=dict(color='orange', dash='dash')), 
+                          row=1, col=1)
 
-        fig.add_trace(go.Scatter(x=df_filtered['Date'], y=df_filtered['SMA_200'], 
-                                mode='lines', name='SMA 200', line=dict(color='red', dash='dot')), 
-                      row=1, col=1)
+        if (df_filtered['SMA_200'] != 0).any():
+            fig.add_trace(go.Scatter(x=df_filtered['Date'], y=df_filtered['SMA_200'], 
+                                    mode='lines', name='SMA 200', line=dict(color='red', dash='dot')), 
+                          row=1, col=1)
+        
+        fig.update_yaxes(title_text="Price (INR)", row=1, col=1)
 
-        # Row 2: Volume
-        fig.add_trace(go.Bar(x=df_filtered['Date'], y=df_filtered['Volume'], 
-                            name='Volume', marker_color='grey'), 
+        # Row 2: RSI
+        fig.add_trace(go.Scatter(x=df_filtered['Date'], y=df_filtered['RSI'], 
+                            mode='lines', name='RSI', line=dict(color='purple')), 
                       row=2, col=1)
         
-        # Update layout and titles
-        fig.update_layout(height=600, 
-                          title_text=f"Stock Price Movement and Moving Averages for {selected_symbol}",
-                          xaxis2_title="Date",
-                          yaxis1_title="Price (Close, SMA)",
-                          yaxis2_title="Volume",
+        # Add Overbought (70) and Oversold (30) lines for context
+        fig.add_hline(y=70, line_dash="dash", line_color="red", row=2, col=1, opacity=0.5)
+        fig.add_hline(y=30, line_dash="dash", line_color="green", row=2, col=1, opacity=0.5)
+        
+        fig.update_yaxes(title_text="RSI (50-Day)", range=[0, 100], row=2, col=1)
+        fig.update_xaxes(title_text="Date", row=2, col=1)
+        
+        # Final layout adjustments
+        fig.update_layout(height=700, 
                           hovermode="x unified",
-                          margin=dict(l=20, r=20, t=50, b=20))
+                          margin=dict(l=20, r=20, t=50, b=20),
+                          legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
 
         st.plotly_chart(fig, use_container_width=True)
-
-        # --- 2. Technical Indicator: RSI Plot ---
-        st.subheader("Relative Strength Index (RSI)")
-        fig_rsi = go.Figure(data=[
-            go.Scatter(x=df_filtered['Date'], y=df_filtered['RSI'], 
-                       mode='lines', name='RSI', line=dict(color='purple'))
-        ])
-        # Add Overbought (70) and Oversold (30) lines
-        fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought")
-        fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold")
-        
-        fig_rsi.update_layout(height=300, 
-                              yaxis_title="RSI (50-Day)",
-                              xaxis_title="Date",
-                              margin=dict(l=20, r=20, t=20, b=20))
-        
-        st.plotly_chart(fig_rsi, use_container_width=True)
-
+    
     st.markdown("---")
     
-    # --- 3. Regression Model Summary ---
-    st.header("Regression Model Performance")
-    st.write("The Jupyter notebook trained three regression models to predict the 'Close' price:")
+    # --- 2. Regression Model Summary ---
+    st.header("Regression Model Performance Summary")
+    st.write("The notebook used three models to predict the stock's 'Close' price across the entire dataset. All models showed extremely high accuracy (R² score close to 1.0), which is typical when predicting the immediate next price using current and historical data like Close, Open, High, Low, and technical indicators.")
 
     # Results from the notebook (Cells 51, 55, 60)
     regression_results = {
-        "Linear Regression": 1.0,  # r2 in cell 51
-        "Random Forest Regressor": 0.9999937211277004,  # r21 in cell 55
-        "XGBoost Regressor": 0.9999937211277004,  # r211 in cell 60
+        "Linear Regression": 1.0, 
+        "Random Forest Regressor": 0.9999937211277004, 
+        "XGBoost Regressor": 0.9999937211277004, 
     }
     
     results_df = pd.DataFrame(regression_results.items(), columns=['Model', 'R² Score'])
-    results_df['R² Score'] = results_df['R² Score'].map(lambda x: f"{x:.6f}")
+    results_df['R² Score'] = results_df['R² Score'].map(lambda x: f"{x:.9f}") # Displaying high precision
     
     st.dataframe(results_df, use_container_width=True, hide_index=True)
-    
-    st.success("The high R² scores suggest that the models are nearly perfectly predicting the 'Close' price, which is common in time series models where future price is heavily dependent on current and prior prices (e.g., Open, High, Low, and engineered features like SMA, MACD).")
 
 if __name__ == "__main__":
     main()
