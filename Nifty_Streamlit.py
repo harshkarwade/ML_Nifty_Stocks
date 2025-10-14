@@ -15,7 +15,8 @@ def calculate_rsi(data, window=50):
     loss = -delta.clip(upper=0)
     avg_gain = gain.ewm(com=window - 1, adjust=False).mean()
     avg_loss = loss.ewm(com=window - 1, adjust=False).mean()
-    rs = avg_gain / avg_loss
+    # Adding a small epsilon to avoid division by zero in case of zero average loss
+    rs = avg_gain / (avg_loss.replace(0, 1e-10))
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
@@ -31,13 +32,13 @@ def load_and_preprocess_data(uploaded_file):
     try:
         df = pd.read_csv(io.StringIO(uploaded_file.getvalue().decode("utf-8")))
     except Exception as e:
-        st.error(f"Error reading CSV file: {e}")
+        st.error(f"Error reading CSV file. Please ensure it is a valid CSV format: {e}")
         return pd.DataFrame()
 
     # Data Cleaning and Feature Engineering (from the notebook logic)
     
     # 1. Fill NaN from original file
-    df = df.fillna(0)
+    df = df = df.fillna(0)
     
     # 2. Convert Date to datetime. Assuming 'Date' column is present.
     if 'Date' in df.columns:
@@ -49,10 +50,14 @@ def load_and_preprocess_data(uploaded_file):
     # 3. Check for essential columns (Open, High, Low, Close, Symbol)
     required_cols = ['Open', 'High', 'Low', 'Close', 'Volume', 'Symbol']
     if not all(col in df.columns for col in required_cols):
-        st.error(f"The file must contain the following columns: {', '.join(required_cols)}")
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        st.error(f"The file must contain the following columns: {', '.join(missing_cols)} are missing.")
         return pd.DataFrame()
 
-    # 4. Calculate SMA_50, SMA_200, and RSI for each stock symbol
+    # 4. Ensure 'Symbol' is treated as a string type for the multiselect later
+    df['Symbol'] = df['Symbol'].astype(str)
+
+    # 5. Calculate SMA_50, SMA_200, and RSI for each stock symbol
     df['SMA_50'] = df.groupby('Symbol')['Close'].transform(lambda x: x.rolling(window=50).mean().fillna(0))
     df['SMA_200'] = df.groupby('Symbol')['Close'].transform(lambda x: x.rolling(window=200).mean().fillna(0))
     df['RSI'] = df.groupby('Symbol')['Close'].transform(lambda x: calculate_rsi(x, window=50).fillna(0))
@@ -126,7 +131,8 @@ def main():
         if not df_final.empty:
             
             # 1. Price Comparison Plot
-            st.subheader(f"Close Price Comparison: {', '.join(selected_symbols)}")
+            # FIX APPLIED HERE: Use map(str, selected_symbols) to ensure all elements are strings
+            st.subheader(f"Close Price Comparison: {', '.join(map(str, selected_symbols))}")
             
             fig = go.Figure()
 
@@ -153,13 +159,15 @@ def main():
 
             # 2. Detailed Technical Indicators (for the first selected stock)
             if selected_symbols:
-                st.subheader(f"Technical Indicators for Detailed Analysis: {selected_symbols[0]}")
-                df_single = df_final[df_final['Symbol'] == selected_symbols[0]]
+                # Ensure the symbol is a string before using it in the subheader
+                first_symbol = str(selected_symbols[0]) 
+                st.subheader(f"Technical Indicators for Detailed Analysis: {first_symbol}")
+                df_single = df_final[df_final['Symbol'] == first_symbol]
                 
                 fig_detail = make_subplots(rows=2, cols=1, shared_xaxes=True, 
                                     vertical_spacing=0.05, 
                                     row_heights=[0.7, 0.3], 
-                                    subplot_titles=[f"{selected_symbols[0]} Price & Moving Averages", "Relative Strength Index (RSI)"])
+                                    subplot_titles=[f"{first_symbol} Price & Moving Averages", "Relative Strength Index (RSI)"])
                 
                 # Row 1: Price and SMAs
                 fig_detail.add_trace(go.Scatter(x=df_single['Date'], y=df_single['Close'], mode='lines', name='Close Price', line=dict(color='blue')), row=1, col=1)
@@ -181,7 +189,7 @@ def main():
         
         # 3. Regression Model Summary
         st.header("Regression Model Performance Summary")
-        st.write("This section reflects the R² scores achieved in the original notebook when predicting the 'Close' price across the entire dataset using Linear Regression, Random Forest, and XGBoost.")
+        st.write("This section reflects the R² scores achieved in the original notebook when predicting the 'Close' price across the entire dataset.")
 
         regression_results = {
             "Linear Regression": 1.0, 
