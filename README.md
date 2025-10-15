@@ -1,5 +1,3 @@
-This document summarizes the entire workflow and results derived from the provided Jupyter Notebook, covering the data, feature engineering, and the highly successful machine learning models used for stock price prediction.
-
 ## Overview of the ML Project on Nifty Stocks
 
 The project is an end-to-end machine learning analysis aimed at **predicting the 'Close' price** for a dataset of **58 Nifty stocks** spanning from January 1, 2024, to September 11, 2024. The analysis follows a rigorous process of data preprocessing, extensive feature engineering using financial technical indicators, and training three distinct regression models.
@@ -19,15 +17,3 @@ The initial phase focused on preparing the raw financial data:
 * **Encoding:** The categorical columns, `Symbol` (stock ticker) and `Category` (industry group), were converted into numerical features using **Label Encoding** for model compatibility.
 
 ***
-
-## Machine Learning Model Results
-
-The prepared data was split into training and testing sets (80/20 split), with the 'Close' price serving as the target variable for prediction. Three regression algorithms were tested:
-
-| Model | $R^2$ Score (Accuracy) | Conclusion |
-| :--- | :--- | :--- |
-| **Linear Regression** | $1.000000$ | Achieved perfect or near-perfect correlation with the actual prices. |
-| **Random Forest Regressor** | $0.999994$ | Showed excellent non-linear fitting performance. |
-| **XGBoost Regressor** | $0.999994$ | Highly effective, delivering results on par with the Random Forest model. |
-
-All three models demonstrated **extremely high predictive accuracy** (an $R^2$ score close to $1.0$), which is typical in time series prediction tasks like this where the current closing price is heavily dependent on immediately preceding values (Open, High, Low) and technical indicators derived from recent historical prices. The results suggest the features engineered are highly effective in modeling the movement of the stock prices within the dataset.
